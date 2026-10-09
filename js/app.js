@@ -8,7 +8,7 @@
 
   const app = document.getElementById('app');
   const overlay = document.getElementById('overlay');
-  const state = { view: 'home', sj: 0, gi: 0, ui: 0, si: 0 };
+  const state = { view: 'home', sj: 0, gi: 0, ui: 0, si: 0, manage: false };
   let current = null; // 当前关卡的控制器 { handle(act, el) }
   let reviewIdx = 0;  // 复习模式当前索引
 
@@ -21,6 +21,11 @@
     return a;
   }
   function el(id) { return document.getElementById(id); }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
   /* ----------------------- 解锁逻辑 ----------------------- */
   function subjectAt(i) { return CURRICULUM.subjects[i]; }
@@ -28,14 +33,10 @@
   function currentLang() { return CURRICULUM.subjects[state.sj].lang || 'en'; }
   function unitComplete(g, u) { return u.stages.every((s, si) => Store.getStage(g.id, u.id, si) > 0); }
   function gradeComplete(g) { return g.units.length > 0 && g.units.every((u) => unitComplete(g, u)); }
-  function gradeUnlocked(i) {
-    if (i === 0) return true;
-    const pg = gradeAt(i - 1);
-    if (pg.soon) return false;
-    return gradeComplete(pg);
-  }
-  function unitUnlocked(g, ui) { if (ui === 0) return true; return unitComplete(g, g.units[ui - 1]); }
-  function stageUnlocked(g, u, si) { if (si === 0) return true; return Store.getStage(g.id, u.id, si - 1) > 0; }
+  // 全部关卡直接可挑战，不再逐级解锁（每课、每关都能点开就玩）
+  function gradeUnlocked(i) { return true; }
+  function unitUnlocked(g, ui) { return true; }
+  function stageUnlocked(g, u, si) { return true; }
   function gradeStars(g) { let s = 0; g.units.forEach((u) => u.stages.forEach((st, si) => s += Store.getStage(g.id, u.id, si))); return s; }
 
   // 记录答错的词（用于错词本 / 复习模式）
@@ -65,6 +66,25 @@
   function renderHome() {
     let html = topbar({ title: '快乐学 · 闯关学堂 🎒' });
     html += '<div class="section home">';
+    // 多用户：切换 / 添加 / 管理儿童档案
+    const profiles = Store.listProfiles();
+    html += '<div class="profiles">';
+    profiles.forEach(function (p) {
+      html += '<button class="profile-chip' + (p.current ? ' active' : '') + '" data-act="switch-profile" data-id="' + p.id + '">' + escapeHtml(p.name) + '</button>';
+    });
+    html += '<button class="profile-chip add" data-act="add-profile">＋ 添加用户</button>';
+    html += '<button class="profile-chip manage" data-act="toggle-manage">' + (state.manage ? '✅ 完成' : '⚙ 管理') + '</button>';
+    html += '</div>';
+    if (state.manage) {
+      html += '<div class="profile-manage">';
+      profiles.forEach(function (p) {
+        html += '<div class="pm-row"><span class="pm-name">' + escapeHtml(p.name) + (p.current ? '（当前）' : '') + '</span>' +
+          '<button class="btn-mini" data-act="rename-profile" data-id="' + p.id + '">✎ 改名</button>' +
+          '<button class="btn-mini danger" data-act="delete-profile" data-id="' + p.id + '">🗑 删除</button></div>';
+      });
+      html += '<p class="hint-small">删除档案会同时清除该用户的学习进度，且至少保留 1 个用户。</p>';
+      html += '</div>';
+    }
     html += '<p class="subtitle">选择学科，开始闯关吧！</p>';
     html += '<div class="subject-grid">';
     CURRICULUM.subjects.forEach((sub, i) => {
@@ -87,15 +107,33 @@
     app.innerHTML = html;
   }
 
-  /* ----------------------- 视图：年级(单元) ----------------------- */
-  function renderGrade() {
+  /* ----------------------- 视图：年级选择 ----------------------- */
+  function doneUnitsCount(g) {
+    let n = 0; g.units.forEach((u) => { if (unitComplete(g, u)) n++; }); return n;
+  }
+  function renderGrades() {
+    const sub = subjectAt(state.sj);
+    let html = topbar({ title: sub.emoji + ' ' + sub.name + ' · 选年级', back: true });
+    html += '<div class="section"><p class="subtitle">选择一个年级，所有课程可直接挑战</p><div class="grade-grid">';
+    sub.grades.forEach((g, i) => {
+      html += '<button class="grade-card" data-act="open-grade" data-gi="' + i + '">';
+      html += '<div class="grade-emoji">' + g.emoji + '</div>';
+      html += '<div class="grade-name">' + g.name + '</div>';
+      html += '<div class="grade-tag">⭐ ' + gradeStars(g) + ' · 已学 ' + doneUnitsCount(g) + '/' + g.units.length + ' 课</div>';
+      html += '</button>';
+    });
+    html += '</div></div>';
+    app.innerHTML = html;
+  }
+
+  /* ----------------------- 视图：单元(课程) ----------------------- */
+  function renderUnits() {
     const g = gradeAt(state.gi);
     const sub = subjectAt(state.sj);
     let html = topbar({ title: sub.name + ' · ' + g.emoji + ' ' + g.name, back: true });
-    html += '<div class="section"><p class="subtitle">' + sub.name + ' · 完成本单元 4 个关卡，解锁下一单元</p><div class="unit-grid">';
+    html += '<div class="section"><p class="subtitle">每一课都能直接挑战，收集 ⭐ 越多越棒</p><div class="unit-grid">';
     g.units.forEach((u, ui) => {
-      const unlocked = unitUnlocked(g, ui);
-      html += '<button class="unit-card' + (unlocked ? '' : ' locked') + '" data-act="open-unit" data-ui="' + ui + '"' + (unlocked ? '' : ' disabled') + '>';
+      html += '<button class="unit-card" data-act="open-unit" data-ui="' + ui + '">';
       html += '<div class="unit-emoji">' + u.emoji + '</div>';
       html += '<div class="unit-name">' + u.name + '</div>';
       html += '<div class="stage-dots">';
@@ -104,7 +142,6 @@
         html += '<span class="dot' + (s > 0 ? ' on' : '') + '">' + (s > 0 ? '★'.repeat(s) : '☆') + '</span>';
       });
       html += '</div>';
-      if (!unlocked) html += '<div class="grade-tag">🔒</div>';
       html += '</button>';
     });
     html += '</div></div>';
@@ -394,7 +431,7 @@
         g.units.forEach(function (u) { totalUnits++; if (unitComplete(g, u)) doneUnits++; });
       });
     });
-    let html = topbar({ title: '📊 家长看板', back: true });
+    let html = topbar({ title: '📊 家长看板 · ' + escapeHtml(Store.currentProfile().name), back: true });
     html += '<div class="section dashboard">';
     html += '<div class="dash-cards">';
     html += '<div class="dash-card"><div class="dash-num">' + Store.totalStars() + '</div><div class="dash-label">⭐ 总星数</div></div>';
@@ -469,15 +506,17 @@
 
   /* ----------------------- 导航 ----------------------- */
   function goHome() { state.view = 'home'; renderHome(); }
-  function goGrade() { state.view = 'grade'; renderGrade(); }
+  function goGrades() { state.view = 'grades'; renderGrades(); }
+  function goUnits() { state.view = 'units'; renderUnits(); }
   function goUnit() { state.view = 'unit'; renderUnit(); }
   function goStage() { state.view = 'stage'; current = null; renderStage(); }
   function goReview() { state.view = 'review'; reviewIdx = 0; renderReview(); }
   function goDashboard() { state.view = 'dashboard'; renderDashboard(); }
   function goBack() {
     if (state.view === 'stage') goUnit();
-    else if (state.view === 'unit') goGrade();
-    else if (state.view === 'grade') goHome();
+    else if (state.view === 'unit') goUnits();
+    else if (state.view === 'units') goGrades();
+    else if (state.view === 'grades') goHome();
     else if (state.view === 'review' || state.view === 'dashboard') goHome();
   }
 
@@ -487,12 +526,30 @@
     if (!node) return;
     const act = node.getAttribute('data-act');
     if (act === 'back') { goBack(); return; }
-    if (act === 'open-subject') { state.sj = +node.dataset.sj; goGrade(); return; }
-    if (act === 'open-grade') { state.gi = +node.dataset.gi; goGrade(); return; }
+    if (act === 'open-subject') { state.sj = +node.dataset.sj; goGrades(); return; }
+    if (act === 'open-grade') { state.gi = +node.dataset.gi; goUnits(); return; }
     if (act === 'open-unit') { state.ui = +node.dataset.ui; goUnit(); return; }
     if (act === 'open-stage') { state.si = +node.dataset.si; goStage(); return; }
     if (act === 'open-review') { goReview(); return; }
     if (act === 'open-dashboard') { goDashboard(); return; }
+    if (act === 'switch-profile') { Store.switchProfile(node.dataset.id); renderHome(); return; }
+    if (act === 'add-profile') {
+      const name = window.prompt('给新用户起个名字（如：圆圆 / 弟弟）：', '新用户');
+      if (name !== null) { Store.addProfile((name.trim() || '新用户')); renderHome(); }
+      return;
+    }
+    if (act === 'toggle-manage') { state.manage = !state.manage; renderHome(); return; }
+    if (act === 'rename-profile') {
+      const id = node.dataset.id;
+      const cur = Store.listProfiles().filter(function (p) { return p.id === id; })[0];
+      const name = window.prompt('修改名字：', cur ? cur.name : '');
+      if (name !== null) { Store.renameProfile(id, (name.trim() || '用户')); renderHome(); }
+      return;
+    }
+    if (act === 'delete-profile') {
+      if (window.confirm('确定删除该用户及其学习进度吗？')) { Store.deleteProfile(node.dataset.id); renderHome(); }
+      return;
+    }
     if (act === 'review-play') {
       const list = Store.getWrongList(); const it = list[reviewIdx];
       if (it) Voice.speak(it.py && !it.en ? it.zh : it.en, { lang: (it.py && !it.en) ? 'zh-CN' : 'en-US' });
