@@ -1,0 +1,8 @@
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# 临时生成脚本（非应用运行所需）
+gen-icons.cjs
