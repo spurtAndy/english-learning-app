@@ -584,6 +584,13 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('sw.js').catch(function () { /* 离线缓存失败不影响使用 */ });
+        // 更新自动生效：页面本有旧 SW 接管、之后换成新 SW 时，自动刷新一次加载新代码
+        if (navigator.serviceWorker.controller) {
+          let refreshed = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (!refreshed) { refreshed = true; location.reload(); }
+          });
+        }
       });
     }
     renderHome();
