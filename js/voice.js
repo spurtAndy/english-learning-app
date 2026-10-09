@@ -33,35 +33,78 @@ const Voice = (function () {
     if (url) config.asrProxyUrl = url;
   }
 
+  let voicesCache = [];
+  function refreshVoices() {
+    try { voicesCache = window.speechSynthesis.getVoices() || []; } catch (e) { voicesCache = []; }
+  }
   function warmUpTTS() {
     if (!ttsReady) return;
     try {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = function () {
-        window.speechSynthesis.getVoices();
-      };
+      refreshVoices();
+      window.speechSynthesis.onvoiceschanged = refreshVoices;
     } catch (e) { /* ignore */ }
   }
   warmUpTTS();
 
-  // 朗读文本
+  // 选发音人：同语言 → 同语种前缀；同类里优先「本地引擎」。
+  // 关键：国内网络下 Google 网络语音(Google 普通话/US English)连不上会静默无声，本地引擎最稳。
+  function pickVoice(lang) {
+    if (!voicesCache.length) refreshVoices();
+    if (!voicesCache.length) return null;
+    const pref = (lang || 'en-US').toLowerCase();
+    const prefix = pref.split('-')[0];
+    const norm = (l) => (l || '').toLowerCase().replace('_', '-');
+    const byExact = voicesCache.filter((v) => norm(v.lang) === pref);
+    const byPrefix = voicesCache.filter((v) => norm(v.lang).indexOf(prefix) === 0);
+    const localFirst = (arr) => arr.slice().sort((a, b) => (b.localService ? 1 : 0) - (a.localService ? 1 : 0));
+    const pool = localFirst(byExact).concat(localFirst(byPrefix));
+    return pool[0] || null;
+  }
+
+  // 持有当前 utterance 引用：部分浏览器会把它回收，导致读到一半没声（Chrome 已知问题）
+  let currentUtterance = null;
+
+  // 朗读文本（含 取消竞态 / 垃圾回收 / 无声重试 三重保护）
   function speak(text, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
       if (!ttsReady) { resolve(false); return; }
+      const synth = window.speechSynthesis;
+      let settled = false, started = false;
+      function done(ok) { if (!settled) { settled = true; resolve(ok); } }
       try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = opts.lang || 'en-US';
-        u.rate = opts.rate != null ? opts.rate : 0.85;
-        u.pitch = opts.pitch != null ? opts.pitch : 1.15;
-        u.volume = opts.volume != null ? opts.volume : 1;
-        u.onend = function () { resolve(true); };
-        u.onerror = function () { resolve(false); };
-        window.speechSynthesis.speak(u);
-      } catch (e) {
-        resolve(false);
-      }
+        synth.cancel();
+        try { synth.resume(); } catch (e) {}
+        // cancel 与 speak 同帧调用在部分浏览器会吞掉发音，延后一拍再开口
+        setTimeout(function () {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = opts.lang || 'en-US';
+          const v = pickVoice(u.lang);
+          if (v) { try { u.voice = v; } catch (e) {} }
+          u.rate = opts.rate != null ? opts.rate : 0.85;
+          u.pitch = opts.pitch != null ? opts.pitch : 1.15;
+          u.volume = opts.volume != null ? opts.volume : 1;
+          currentUtterance = u;
+          u.onstart = function () { started = true; };
+          u.onend = function () { done(true); };
+          u.onerror = function () { done(false); };
+          try { synth.speak(u); } catch (e) { done(false); }
+          // 兜底：1.2s 后还没开口且引擎空闲，改用默认发音人再试一次
+          setTimeout(function () {
+            if (!started && !settled && !synth.speaking) {
+              try {
+                const u2 = new SpeechSynthesisUtterance(text);
+                u2.lang = opts.lang || 'en-US';
+                u2.rate = opts.rate != null ? opts.rate : 0.85;
+                currentUtterance = u2;
+                u2.onend = function () { done(true); };
+                u2.onerror = function () { done(false); };
+                synth.speak(u2);
+              } catch (e) { done(false); }
+            }
+          }, 1200);
+        }, 60);
+      } catch (e) { done(false); }
     });
   }
 
