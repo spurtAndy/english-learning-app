@@ -291,6 +291,44 @@ body {
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 93, 115, 0.5); } 70% { box-shadow: 0 0 0 18px rgba(255, 93, 115, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 93, 115, 0); } }
 
+/* ---------------- 首页：工具入口（复习 / 看板） ---------------- */
+.home-tools { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: 26px; }
+.tool-card {
+  border: none; background: #fff; border-radius: var(--radius);
+  padding: 18px 22px; cursor: pointer; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 200px; transition: transform .14s, box-shadow .14s;
+}
+.tool-card:active { transform: scale(0.96); }
+.tool-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-h); }
+.tool-emoji { font-size: 52px; }
+.tool-name { font-size: 22px; font-weight: bold; color: var(--ink); }
+.tool-sub { font-size: 14px; color: var(--muted); }
+
+/* ---------------- 错词复习 ---------------- */
+.center-box { justify-content: center; gap: 16px; }
+.big-emoji { font-size: 90px; }
+.flashcard.show { width: 340px; height: 400px; }
+.review-answer {
+  background: #fff; border-radius: 20px; box-shadow: var(--shadow);
+  padding: 18px 30px; font-size: 30px; font-weight: bold; color: var(--accent);
+}
+.review-meta { font-size: 16px; color: var(--muted); }
+
+/* ---------------- 家长看板 ---------------- */
+.dashboard { align-items: stretch; }
+.dash-cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
+.dash-card {
+  background: #fff; border-radius: 22px; box-shadow: var(--shadow);
+  padding: 18px 26px; min-width: 150px; text-align: center;
+}
+.dash-num { font-size: 36px; font-weight: bold; color: var(--primary); }
+.dash-label { font-size: 16px; color: var(--muted); margin-top: 4px; }
+.dash-sub { background: #fff; border-radius: 20px; box-shadow: var(--shadow); padding: 16px 22px; width: 100%; max-width: 720px; align-self: center; }
+.dash-sub h3 { margin: 4px 0 12px; font-size: 22px; color: var(--ink); }
+.dash-row { display: flex; justify-content: space-between; font-size: 18px; padding: 6px 0; border-bottom: 1px dashed #eceffa; }
+.dash-row:last-child { border-bottom: none; }
+
 /* ---------------- 竖屏 / 小屏适配 ---------------- */
 @media (max-width: 720px) {
   .title { font-size: 22px; }

@@ -1,6 +1,6 @@
 /* ============================================================
- * 主程序：路由 + 闯关流程 + 四种玩法
- * 视图层级：首页(年级) → 单元 → 关卡阶段(学一学/跟我读/听音选词/闯关测验)
+ * 主程序：路由 + 闯关流程 + 四种玩法 + 错词复习 + 家长看板
+ * 视图层级：首页(学科) → 年级(单元) → 单元(关卡) → 关卡阶段
  * 数据来自 data.js(CURRICULUM)，语音来自 voice.js(Voice)，进度来自 storage.js(Store)
  * ============================================================ */
 (function () {
@@ -10,6 +10,7 @@
   const overlay = document.getElementById('overlay');
   const state = { view: 'home', sj: 0, gi: 0, ui: 0, si: 0 };
   let current = null; // 当前关卡的控制器 { handle(act, el) }
+  let reviewIdx = 0;  // 复习模式当前索引
 
   /* ----------------------- 工具 ----------------------- */
   function shuffle(a) {
@@ -37,6 +38,18 @@
   function stageUnlocked(g, u, si) { if (si === 0) return true; return Store.getStage(g.id, u.id, si - 1) > 0; }
   function gradeStars(g) { let s = 0; g.units.forEach((u) => u.stages.forEach((st, si) => s += Store.getStage(g.id, u.id, si))); return s; }
 
+  // 记录答错的词（用于错词本 / 复习模式）
+  function recordWrongWord(g, u, w) {
+    const isZh = currentLang() === 'zh';
+    Store.recordWrong({
+      subjectId: CURRICULUM.subjects[state.sj].id,
+      gradeId: g.id, unitId: u.id,
+      en: w.en || '', zh: w.zh || '', py: w.py || '', emoji: w.emoji || '🔤'
+    });
+    // 若切到 proxy 语音打分后，可在此接“弱项分析”，当前仅记录
+    void isZh;
+  }
+
   /* ----------------------- 顶部栏 ----------------------- */
   function topbar(opts) {
     opts = opts || {};
@@ -62,9 +75,13 @@
       html += '</button>';
     });
     html += '</div>';
+    html += '<div class="home-tools">';
+    html += '<button class="tool-card" data-act="open-review"><div class="tool-emoji">🔁</div><div class="tool-name">错词复习</div><div class="tool-sub">复习 ' + Store.wrongCount() + ' 个错词</div></button>';
+    html += '<button class="tool-card" data-act="open-dashboard"><div class="tool-emoji">📊</div><div class="tool-name">家长看板</div><div class="tool-sub">查看学习进度</div></button>';
+    html += '</div>';
     html += '<div class="home-foot"><button class="btn-mini" data-act="reset">🔄 重置进度</button></div>';
-    if (!Voice.hasRecognition) {
-      html += '<p class="hint-small center">提示：当前浏览器不支持自动语音评分，跟我读将变为「自检跟读」模式（家长陪孩子确认发音）。推荐使用 Chrome / Edge。</p>';
+    if (!Voice.hasRecognition && Voice.config.provider !== 'proxy') {
+      html += '<p class="hint-small center">提示：当前浏览器不支持自动语音评分，跟我读将变为「自检跟读」模式（家长陪孩子确认发音）。推荐 Chrome / Edge；国内可用「后端语音识别」真正打分。</p>';
     }
     html += '</div>';
     app.innerHTML = html;
@@ -167,7 +184,7 @@
     const items = [];
     u.words.forEach((w) => items.push({ text: isZh ? w.zh : w.en, py: w.py, zh: w.zh, emoji: w.emoji, type: 'word' }));
     (u.sentences || []).forEach((s) => items.push({ text: s, type: 'sentence' }));
-    const fallback = !Voice.hasRecognition;
+    const fallback = !Voice.hasRecognition && Voice.config.provider !== 'proxy';
     let idx = 0, correct = 0, attempted = false, listening = false;
 
     function feedback(msg, ok) {
@@ -277,6 +294,7 @@
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
           if (lastPick === w[KEY]) correct++;
+          else recordWrongWord(g, u, w);
           draw();
         }
         else if (act === 'next-listen') {
@@ -327,6 +345,7 @@
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
           if (lastPick === w[KEY]) correct++;
+          else recordWrongWord(g, u, w);
           draw();
         }
         else if (act === 'next-quiz') {
@@ -336,6 +355,65 @@
       }
     };
     buildOptions(); draw();
+  }
+
+  /* ----------------------- 错词复习模式 ----------------------- */
+  function renderReview() {
+    const list = Store.getWrongList();
+    if (list.length === 0) {
+      let html = topbar({ title: '🔁 错词复习', back: true });
+      html += '<div class="section center-box"><div class="big-emoji">🎉</div><p class="subtitle">还没有错词，继续加油！</p><button class="btn-big" data-act="back">返回首页</button></div>';
+      app.innerHTML = html; return;
+    }
+    if (reviewIdx >= list.length) reviewIdx = list.length - 1;
+    if (reviewIdx < 0) reviewIdx = 0;
+    const it = list[reviewIdx];
+    const isZh = !!(it.py && !it.en);
+    let html = topbar({ title: '🔁 错词复习', back: true });
+    html += '<div class="section review">';
+    html += '<div class="flashcard show"><div class="fc-front"><div class="fc-emoji">' + it.emoji + '</div>' +
+            '<div class="fc-en' + (isZh ? ' fc-py' : '') + '">' + (isZh ? it.py : it.en) + '</div>' +
+            '<div class="fc-hint">答案在下方 👇</div></div></div>';
+    html += '<div class="review-answer">答案：' + (it.zh || '') + (isZh ? '' : '（' + (it.py || '') + '）') + '</div>';
+    html += '<div class="review-meta">答错次数：' + (it.count || 1) + '</div>';
+    html += '<div class="row">';
+    html += '<button class="btn-primary" data-act="review-play">🔊 听一读</button>';
+    html += '<button class="btn-mic" data-act="review-master">✅ 已掌握</button>';
+    html += '</div>';
+    html += '<div class="progress">第 ' + (reviewIdx + 1) + ' / ' + list.length + ' 个错词</div>';
+    html += '<button class="btn-mini" data-act="review-clear">🗑️ 清空错词本</button>';
+    html += '</div>';
+    app.innerHTML = html;
+  }
+
+  /* ----------------------- 家长看板 ----------------------- */
+  function renderDashboard() {
+    let totalUnits = 0, doneUnits = 0;
+    CURRICULUM.subjects.forEach(function (sub) {
+      sub.grades.forEach(function (g) {
+        g.units.forEach(function (u) { totalUnits++; if (unitComplete(g, u)) doneUnits++; });
+      });
+    });
+    let html = topbar({ title: '📊 家长看板', back: true });
+    html += '<div class="section dashboard">';
+    html += '<div class="dash-cards">';
+    html += '<div class="dash-card"><div class="dash-num">' + Store.totalStars() + '</div><div class="dash-label">⭐ 总星数</div></div>';
+    html += '<div class="dash-card"><div class="dash-num">' + Store.wrongCount() + '</div><div class="dash-label">🔁 错词数</div></div>';
+    html += '<div class="dash-card"><div class="dash-num">' + doneUnits + '/' + totalUnits + '</div><div class="dash-label">🏁 通关单元</div></div>';
+    html += '</div>';
+    CURRICULUM.subjects.forEach(function (sub) {
+      html += '<div class="dash-sub"><h3>' + sub.emoji + ' ' + sub.name + '</h3>';
+      sub.grades.forEach(function (g) {
+        const tot = g.units.length;
+        const done = g.units.filter(function (u) { return unitComplete(g, u); }).length;
+        const pct = tot ? Math.round(done / tot * 100) : 0;
+        html += '<div class="dash-row"><span>' + g.emoji + ' ' + g.name + '</span><span>' + pct + '% · ⭐' + gradeStars(g) + '</span></div>';
+      });
+      html += '</div>';
+    });
+    html += '<button class="btn-mini" data-act="back">返回首页</button>';
+    html += '</div>';
+    app.innerHTML = html;
   }
 
   /* ----------------------- 通关 / 星级 / 重试 ----------------------- */
@@ -381,7 +459,7 @@
     showOverlay(
       '<div class="modal-emoji">⚠️</div>' +
       '<div class="modal-title">重置所有进度？</div>' +
-      '<div class="modal-sub">已获得的星星会全部清空</div>' +
+      '<div class="modal-sub">已获得的星星会全部清空（错词本保留）</div>' +
       '<div class="modal-btns">' +
         '<button class="btn-primary" data-act="reset-confirm">确认重置</button>' +
         '<button class="btn-ghost" data-act="reset-cancel">取消</button>' +
@@ -394,10 +472,13 @@
   function goGrade() { state.view = 'grade'; renderGrade(); }
   function goUnit() { state.view = 'unit'; renderUnit(); }
   function goStage() { state.view = 'stage'; current = null; renderStage(); }
+  function goReview() { state.view = 'review'; reviewIdx = 0; renderReview(); }
+  function goDashboard() { state.view = 'dashboard'; renderDashboard(); }
   function goBack() {
     if (state.view === 'stage') goUnit();
     else if (state.view === 'unit') goGrade();
     else if (state.view === 'grade') goHome();
+    else if (state.view === 'review' || state.view === 'dashboard') goHome();
   }
 
   /* ----------------------- 事件委托 ----------------------- */
@@ -410,6 +491,21 @@
     if (act === 'open-grade') { state.gi = +node.dataset.gi; goGrade(); return; }
     if (act === 'open-unit') { state.ui = +node.dataset.ui; goUnit(); return; }
     if (act === 'open-stage') { state.si = +node.dataset.si; goStage(); return; }
+    if (act === 'open-review') { goReview(); return; }
+    if (act === 'open-dashboard') { goDashboard(); return; }
+    if (act === 'review-play') {
+      const list = Store.getWrongList(); const it = list[reviewIdx];
+      if (it) Voice.speak(it.py && !it.en ? it.zh : it.en, { lang: (it.py && !it.en) ? 'zh-CN' : 'en-US' });
+      return;
+    }
+    if (act === 'review-master') {
+      const list = Store.getWrongList(); const it = list[reviewIdx];
+      if (it) Store.removeWrong(it.key);
+      const nl = Store.getWrongList();
+      if (reviewIdx >= nl.length) reviewIdx = Math.max(0, nl.length - 1);
+      renderReview(); return;
+    }
+    if (act === 'review-clear') { Store.clearWrong(); reviewIdx = 0; renderReview(); return; }
     if (act === 'reset') { doReset(); return; }
     if (current && current.handle) current.handle(act, node);
   });

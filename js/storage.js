@@ -12,7 +12,7 @@ const Store = (function () {
       const raw = localStorage.getItem(KEY);
       if (raw) return JSON.parse(raw);
     } catch (e) { /* ignore */ }
-    return { stars: {}, settings: {} };
+    return { stars: {}, settings: {}, wrong: {} };
   }
 
   let data = load();
@@ -42,8 +42,25 @@ const Store = (function () {
     return sum;
   }
 
+  // 错词本：记录答错的单词/拼音（长期保留，用于复习模式）
+  function recordWrong(entry) {
+    const key = [entry.subjectId, entry.gradeId, entry.unitId, entry.en || entry.py].join('|');
+    const cur = data.wrong[key] || { count: 0 };
+    cur.subjectId = entry.subjectId; cur.gradeId = entry.gradeId; cur.unitId = entry.unitId;
+    cur.en = entry.en || ''; cur.zh = entry.zh || ''; cur.py = entry.py || ''; cur.emoji = entry.emoji || '🔤';
+    cur.key = key;
+    cur.count = (cur.count || 0) + 1; cur.last = Date.now();
+    data.wrong[key] = cur; save();
+  }
+  function getWrongList() {
+    return Object.keys(data.wrong).map(function (k) { return data.wrong[k]; });
+  }
+  function wrongCount() { return Object.keys(data.wrong).length; }
+  function clearWrong() { data.wrong = {}; save(); }
+  function removeWrong(k) { if (data.wrong[k]) { delete data.wrong[k]; save(); } }
+
   function resetAll() {
-    data = { stars: {}, settings: {} };
+    data = { stars: {}, settings: {}, wrong: data.wrong || {} };
     save();
   }
 
@@ -51,6 +68,11 @@ const Store = (function () {
     getStage: getStage,
     setStage: setStage,
     totalStars: totalStars,
+    recordWrong: recordWrong,
+    getWrongList: getWrongList,
+    wrongCount: wrongCount,
+    clearWrong: clearWrong,
+    removeWrong: removeWrong,
     resetAll: resetAll,
     save: save
   };
