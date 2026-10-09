@@ -907,24 +907,108 @@ const U9 = [
   ])
 ];
 
-/* ---------------- 组合为 9 个年级（上+下册合并） ---------------- */
-const CURRICULUM = {
+/* ---------------- 英语学科：牛津上海版（沪教版）一年级~九年级 ---------------- */
+const englishSubject = {
+  id: 'english', name: '英语', emoji: '🔤', lang: 'en',
+  subtitle: '牛津上海版 · 一年级~九年级',
   grades: [
-    { id: 'g1', name: '一年级',   emoji: '🌱', soon: false, units: U1A.concat(U1B) },
-    { id: 'g2', name: '二年级',   emoji: '🌿', soon: false, units: U2A.concat(U2B) },
-    { id: 'g3', name: '三年级',   emoji: '🌟', soon: false, units: U3 },
-    { id: 'g4', name: '四年级',   emoji: '🔥', soon: false, units: U4 },
-    { id: 'g5', name: '五年级',   emoji: '⭐', soon: false, units: U5 },
-    { id: 'g6', name: '六年级',   emoji: '🚀', soon: false, units: U6 },
-    { id: 'g7', name: '七年级',   emoji: '💡', soon: false, units: U7 },
-    { id: 'g8', name: '八年级',   emoji: '🌈', soon: false, units: U8 },
-    { id: 'g9', name: '九年级',   emoji: '🏅', soon: false, units: U9 }
+    { id: 'g1', name: '一年级',   emoji: '🌱', units: U1A.concat(U1B) },
+    { id: 'g2', name: '二年级',   emoji: '🌿', units: U2A.concat(U2B) },
+    { id: 'g3', name: '三年级',   emoji: '🌟', units: U3 },
+    { id: 'g4', name: '四年级',   emoji: '🔥', units: U4 },
+    { id: 'g5', name: '五年级',   emoji: '⭐', units: U5 },
+    { id: 'g6', name: '六年级',   emoji: '🚀', units: U6 },
+    { id: 'g7', name: '七年级',   emoji: '💡', units: U7 },
+    { id: 'g8', name: '八年级',   emoji: '🌈', units: U8 },
+    { id: 'g9', name: '九年级',   emoji: '🏅', units: U9 }
   ]
 };
 
+/* ---------------- 语文学科：人教版一年级·汉语拼音 ---------------- */
+// 拼音项构造：py=拼音(带声调)，zh=示范汉字（朗读与显示都用汉字发音）
+function P(py, zh, emoji) { return { py: py, zh: zh, emoji: emoji || '🔤' }; }
+// 语文单元构造（复用标准 4 阶段：学一学/跟我读/听音选词/闯关测验）
+function CU(name, emoji, items) {
+  return { name: name, emoji: emoji, words: items, sentences: [], stages: stdStages() };
+}
+const ZY_U1 = CU('第1课 · 单韵母 a o e', '🅰️', [
+  P('ā','啊','👶'), P('á','啊','👶'), P('ǎ','啊','👶'), P('à','啊','👶'),
+  P('ō','喔','🐤'), P('ó','哦','🤔'), P('è','饿','🍚'), P('é','鹅','🦢')
+]);
+const ZY_U2 = CU('第2课 · 单韵母 i u ü', '🅸️', [
+  P('ī','衣','👕'), P('í','姨','👩'), P('ǐ','椅','🪑'), P('ì','意','💡'),
+  P('ū','屋','🏠'), P('ú','吴','👤'), P('ǔ','五','5️⃣'), P('ù','雾','🌫️'),
+  P('ǖ','迂','🌀'), P('ǘ','鱼','🐟'), P('ǚ','雨','🌧️'), P('ǜ','玉','💎')
+]);
+const ZY_U3 = CU('第3课 · 声母 b p m f', '🅱️', [
+  P('bā','巴','🥁'), P('bà','爸','👨'), P('bō','波','🌊'), P('pá','爬','🐛'),
+  P('pō','坡','⛰️'), P('mā','妈','👩'), P('mó','摸','✋'), P('fā','发','💇'), P('fó','佛','🛕')
+]);
+const ZY_U4 = CU('第4课 · 声母 d t n l', '🇩', [
+  P('dà','大','🔢'), P('dī','滴','💧'), P('tā','他','👤'), P('tí','提','👜'),
+  P('nǎ','哪','❓'), P('ná','拿','✊'), P('lè','乐','😄'), P('lù','路','🛣️')
+]);
+const ZY_U5 = CU('第5课 · 声母 g k h', '🇬', [
+  P('gē','哥','👦'), P('gū','姑','👩'), P('kē','棵','🌳'), P('kǔ','苦','😣'),
+  P('hē','喝','🥤'), P('hú','胡','🧔')
+]);
+const ZY_U6 = CU('第6课 · 声母 j q x', '🇯', [
+  P('jī','鸡','🐔'), P('jú','橘','🍊'), P('qī','七','7️⃣'), P('qí','旗','🚩'),
+  P('xī','西','🌅'), P('xū','须','💇')
+]);
+const ZY_U7 = CU('第7课 · 声母 z c s', '🇿', [
+  P('zā','扎','📦'), P('zá','杂','🗑️'), P('cā','擦','🧻'), P('cí','词','🔤'),
+  P('sǎ','洒','💦'), P('sī','丝','🧵'), P('zī','资','💰'), P('cī','疵','⚠️')
+]);
+const ZY_U8 = CU('第8课 · 声母 zh ch sh r', '🇷', [
+  P('zhī','织','🧶'), P('zhū','猪','🐷'), P('chá','茶','🍵'), P('chē','车','🚗'),
+  P('shī','狮','🦁'), P('shù','树','🌳'), P('rì','日','☀️'), P('ròu','肉','🍖')
+]);
+const ZY_U9 = CU('第9课 · 复韵母 ai ei ui', '🇦', [
+  P('āi','挨','🤝'), P('ái','矮','📏'), P('ài','爱','❤️'), P('hēi','黑','⚫'),
+  P('huī','灰','🌫️'), P('bái','白','⚪'), P('wěi','尾','🐈')
+]);
+const ZY_U10 = CU('第10课 · 复韵母 ao ou iu', '🇴', [
+  P('āo','凹','🔽'), P('áo','熬','🍲'), P('ǎo','袄','🧥'), P('ào','傲','😎'),
+  P('ōu','欧','🌍'), P('hóu','猴','🐵'), P('liú','流','💧'), P('bāo','包','🎒')
+]);
+const ZY_U11 = CU('第11课 · 复韵母 ie üe er', '🇮', [
+  P('iē','耶','🗣️'), P('xié','鞋','👟'), P('yuè','月','🌙'), P('èr','二','2️⃣'),
+  P('ěr','耳','👂'), P('ér','儿','👶')
+]);
+const ZY_U12 = CU('第12课 · 鼻韵母 an en in un ün', '🇦', [
+  P('ān','安','🕊️'), P('bān','班','🏫'), P('mén','门','🚪'), P('jīn','斤','⚖️'),
+  P('lún','轮','🛞'), P('yún','云','☁️'), P('nín','您','🙇')
+]);
+const ZY_U13 = CU('第13课 · 鼻韵母 ang eng ing ong', '🇦', [
+  P('bāng','帮','🤝'), P('dēng','灯','💡'), P('jīng','京','🏯'), P('hóng','红','🔴'),
+  P('fēng','风','🌬️'), P('xīng','星','⭐')
+]);
+const ZY_U14 = CU('整体认读音节', '🔢', [
+  P('zhi','织','🧶'), P('chi','吃','🍽️'), P('shi','狮','🦁'), P('ri','日','☀️'),
+  P('zi','字','🔤'), P('ci','词','🔤'), P('si','丝','🧵'), P('yi','衣','👕'),
+  P('wu','屋','🏠'), P('yu','鱼','🐟'), P('ye','叶','🍃'), P('yue','月','🌙'),
+  P('yuan','圆','⭕'), P('yin','音','🔊'), P('yun','云','☁️'), P('ying','鹰','🦅')
+]);
+const chineseGrades = [
+  { id: 'cz1', name: '一年级（拼音）', emoji: '📖', units: [ZY_U1, ZY_U2, ZY_U3, ZY_U4, ZY_U5, ZY_U6, ZY_U7, ZY_U8, ZY_U9, ZY_U10, ZY_U11, ZY_U12, ZY_U13, ZY_U14] }
+];
+const chineseSubject = {
+  id: 'chinese', name: '语文', emoji: '📖', lang: 'zh',
+  subtitle: '人教版 · 一年级汉语拼音',
+  grades: chineseGrades
+};
+
+/* ---------------- 组合为多学科 ---------------- */
+const CURRICULUM = {
+  subjects: [ englishSubject, chineseSubject ]
+};
+
 // 自动为单元生成唯一 id（grade.id + '-u' + 序号）
-CURRICULUM.grades.forEach(function (g) {
-  g.units.forEach(function (u, i) { u.id = g.id + '-u' + (i + 1); });
+CURRICULUM.subjects.forEach(function (sub) {
+  sub.grades.forEach(function (g) {
+    g.units.forEach(function (u, i) { u.id = g.id + '-u' + (i + 1); });
+  });
 });
 
 if (typeof window !== 'undefined') window.CURRICULUM = CURRICULUM;

@@ -8,7 +8,7 @@
 
   const app = document.getElementById('app');
   const overlay = document.getElementById('overlay');
-  const state = { view: 'home', gi: 0, ui: 0, si: 0 };
+  const state = { view: 'home', sj: 0, gi: 0, ui: 0, si: 0 };
   let current = null; // 当前关卡的控制器 { handle(act, el) }
 
   /* ----------------------- 工具 ----------------------- */
@@ -22,12 +22,14 @@
   function el(id) { return document.getElementById(id); }
 
   /* ----------------------- 解锁逻辑 ----------------------- */
-  function gradeAt(i) { return CURRICULUM.grades[i]; }
+  function subjectAt(i) { return CURRICULUM.subjects[i]; }
+  function gradeAt(i) { return CURRICULUM.subjects[state.sj].grades[i]; }
+  function currentLang() { return CURRICULUM.subjects[state.sj].lang || 'en'; }
   function unitComplete(g, u) { return u.stages.every((s, si) => Store.getStage(g.id, u.id, si) > 0); }
   function gradeComplete(g) { return g.units.length > 0 && g.units.every((u) => unitComplete(g, u)); }
   function gradeUnlocked(i) {
     if (i === 0) return true;
-    const pg = CURRICULUM.grades[i - 1];
+    const pg = gradeAt(i - 1);
     if (pg.soon) return false;
     return gradeComplete(pg);
   }
@@ -48,19 +50,15 @@
 
   /* ----------------------- 视图：首页 ----------------------- */
   function renderHome() {
-    let html = topbar({ title: '沪教版·快乐学英语 🎒' });
+    let html = topbar({ title: '快乐学 · 闯关学堂 🎒' });
     html += '<div class="section home">';
-    html += '<p class="subtitle">牛津上海版英语（一年级~九年级）· 选年级开始闯关</p>';
-    html += '<div class="grade-grid">';
-    CURRICULUM.grades.forEach((g, i) => {
-      const unlocked = gradeUnlocked(i);
-      const cls = !unlocked ? 'locked' : (g.soon ? 'soon' : '');
-      html += '<button class="grade-card ' + cls + '" data-act="open-grade" data-gi="' + i + '"' + (unlocked ? '' : ' disabled') + '>';
-      html += '<div class="grade-emoji">' + g.emoji + '</div>';
-      html += '<div class="grade-name">' + g.name + '</div>';
-      if (g.soon) html += '<div class="grade-tag">敬请期待</div>';
-      else if (!unlocked) html += '<div class="grade-tag">🔒 先通关上一阶</div>';
-      else html += '<div class="grade-tag">⭐ ' + gradeStars(g) + '</div>';
+    html += '<p class="subtitle">选择学科，开始闯关吧！</p>';
+    html += '<div class="subject-grid">';
+    CURRICULUM.subjects.forEach((sub, i) => {
+      html += '<button class="subject-card" data-act="open-subject" data-sj="' + i + '">';
+      html += '<div class="subject-emoji">' + sub.emoji + '</div>';
+      html += '<div class="subject-name">' + sub.name + '</div>';
+      html += '<div class="subject-sub">' + sub.subtitle + '</div>';
       html += '</button>';
     });
     html += '</div>';
@@ -75,8 +73,9 @@
   /* ----------------------- 视图：年级(单元) ----------------------- */
   function renderGrade() {
     const g = gradeAt(state.gi);
-    let html = topbar({ title: g.emoji + ' ' + g.name, back: true });
-    html += '<div class="section"><p class="subtitle">完成本单元 4 个关卡，解锁下一单元</p><div class="unit-grid">';
+    const sub = subjectAt(state.sj);
+    let html = topbar({ title: sub.name + ' · ' + g.emoji + ' ' + g.name, back: true });
+    html += '<div class="section"><p class="subtitle">' + sub.name + ' · 完成本单元 4 个关卡，解锁下一单元</p><div class="unit-grid">';
     g.units.forEach((u, ui) => {
       const unlocked = unitUnlocked(g, ui);
       html += '<button class="unit-card' + (unlocked ? '' : ' locked') + '" data-act="open-unit" data-ui="' + ui + '"' + (unlocked ? '' : ' disabled') + '>';
@@ -125,15 +124,20 @@
     else if (st.type === 'quiz') renderQuiz(g, u);
   }
 
-  /* ----------------------- 玩法1：学一学（单词卡片） ----------------------- */
+  /* ----------------------- 玩法1：学一学（卡片：英文/拼音 ↔ 中文/汉字） ----------------------- */
   function renderLearn(g, u) {
     let idx = 0, flipped = false;
+    const isZh = currentLang() === 'zh';
     function draw() {
       const w = u.words[idx];
+      const frontMain = isZh ? w.py : w.en;
+      const frontHint = isZh ? '👆 点击卡片看汉字' : '👆 点击卡片看中文';
+      const backMain = isZh ? w.zh : w.zh;
+      const backSub = isZh ? w.py : w.en;
       let html = topbar({ title: u.emoji + ' 学一学', back: true });
       html += '<div class="stage-wrap"><div class="flashcard' + (flipped ? ' flipped' : '') + '" data-act="flip">';
-      html += '<div class="fc-front"><div class="fc-emoji">' + w.emoji + '</div><div class="fc-en">' + w.en + '</div><div class="fc-hint">👆 点击卡片看中文</div></div>';
-      html += '<div class="fc-back"><div class="fc-zh">' + w.zh + '</div><div class="fc-en">' + w.en + '</div><div class="fc-emoji">' + w.emoji + '</div></div>';
+      html += '<div class="fc-front"><div class="fc-emoji">' + w.emoji + '</div><div class="fc-en' + (isZh ? ' fc-py' : '') + '">' + frontMain + '</div><div class="fc-hint">' + frontHint + '</div></div>';
+      html += '<div class="fc-back"><div class="fc-zh">' + backMain + '</div><div class="fc-en">' + backSub + '</div><div class="fc-emoji">' + w.emoji + '</div></div>';
       html += '</div>';
       html += '<div class="row">';
       html += '<button class="btn-primary" data-act="play-word">🔊 听一读</button>';
@@ -148,7 +152,7 @@
     current = {
       handle: function (act) {
         if (act === 'flip') { flipped = !flipped; draw(); }
-        else if (act === 'play-word') { Voice.speak(u.words[idx].en); }
+        else if (act === 'play-word') { const ww = u.words[idx]; Voice.speak(isZh ? ww.zh : ww.en, { lang: isZh ? 'zh-CN' : 'en-US' }); }
         else if (act === 'prev-w') { idx = Math.max(0, idx - 1); flipped = false; draw(); }
         else if (act === 'next-w') { idx = Math.min(u.words.length - 1, idx + 1); flipped = false; draw(); }
         else if (act === 'finish-learn') { completeStage(g, u, state.si, 1); }
@@ -159,8 +163,9 @@
 
   /* ----------------------- 玩法2：跟我读（语音跟读） ----------------------- */
   function renderSpeak(g, u) {
+    const isZh = currentLang() === 'zh';
     const items = [];
-    u.words.forEach((w) => items.push({ text: w.en, zh: w.zh, emoji: w.emoji, type: 'word' }));
+    u.words.forEach((w) => items.push({ text: isZh ? w.zh : w.en, py: w.py, zh: w.zh, emoji: w.emoji, type: 'word' }));
     (u.sentences || []).forEach((s) => items.push({ text: s, type: 'sentence' }));
     const fallback = !Voice.hasRecognition;
     let idx = 0, correct = 0, attempted = false, listening = false;
@@ -175,9 +180,9 @@
       html += '<div class="stage-wrap speak">';
       html += '<div class="speak-card">';
       html += '<div class="speak-emoji">' + (it.emoji || '🎤') + '</div>';
-      html += '<div class="speak-text">' + it.text + '</div>';
+      html += '<div class="speak-text' + (isZh ? ' fc-py' : '') + '">' + (isZh ? it.py : it.text) + '</div>';
       if (it.zh) html += '<div class="speak-zh">' + it.zh + '</div>';
-      html += '<div class="speak-type">' + (it.type === 'sentence' ? '📝 句子跟读' : '🔤 单词跟读') + '</div>';
+      html += '<div class="speak-type">' + (it.type === 'sentence' ? '📝 句子跟读' : (isZh ? '🔤 拼音跟读' : '🔤 单词跟读')) + '</div>';
       html += '</div>';
       html += '<div class="row">';
       html += '<button class="btn-primary" data-act="listen-item">🔊 听一读</button>';
@@ -200,12 +205,12 @@
     current = {
       handle: function (act) {
         const it = items[idx];
-        if (act === 'listen-item') { Voice.speak(it.text); }
+        if (act === 'listen-item') { Voice.speak(it.text, { lang: isZh ? 'zh-CN' : 'en-US' }); }
         else if (act === 'self-ok') { attempted = true; correct++; draw(); }
         else if (act === 'speak-item') {
           if (listening) return;
           listening = true; draw();
-          Voice.recognize('en-US').then(function (r) {
+          Voice.recognize(isZh ? 'zh-CN' : 'en-US').then(function (r) {
             listening = false; attempted = true;
             let ok = false, msg = '';
             if (r.success) {
@@ -233,25 +238,27 @@
     draw();
   }
 
-  /* ----------------------- 玩法3：听音选词 ----------------------- */
+  /* ----------------------- 玩法3：听音选词 / 听音选拼音 ----------------------- */
   function renderListen(g, u) {
+    const isZh = currentLang() === 'zh';
+    const KEY = isZh ? 'py' : 'en';
     const words = u.words;
     let idx = 0, correct = 0, picked = false, lastPick = '', options = [];
     function buildOptions() {
       const target = words[idx];
-      const pool = shuffle(words.filter((w) => w.en !== target.en).map((w) => w.en)).slice(0, 3);
-      options = shuffle([target.en].concat(pool));
+      const pool = shuffle(words.filter((w) => w[KEY] !== target[KEY]).map((w) => w[KEY])).slice(0, 3);
+      options = shuffle([target[KEY]].concat(pool));
     }
     function draw() {
       const w = words[idx];
       let html = topbar({ title: u.emoji + ' 听音选词', back: true });
       html += '<div class="stage-wrap listen">';
-      html += '<button class="big-play" data-act="play-sound">🔊 点击听发音</button>';
+      html += '<button class="big-play" data-act="play-sound">' + (isZh ? '🔊 听发音，选出正确的拼音' : '🔊 点击听发音，选出单词') + '</button>';
       html += '<div class="opt-grid">';
       options.forEach((opt) => {
         let cls = 'opt';
-        if (picked) { if (opt === w.en) cls += ' correct'; else if (opt === lastPick) cls += ' wrong'; }
-        html += '<button class="' + cls + '" data-act="pick" data-opt="' + opt + '"' + (picked ? ' disabled' : '') + '>' + opt + '</button>';
+        if (picked) { if (opt === w[KEY]) cls += ' correct'; else if (opt === lastPick) cls += ' wrong'; }
+        html += '<button class="' + cls + (isZh ? ' fc-py' : '') + '" data-act="pick" data-opt="' + opt + '"' + (picked ? ' disabled' : '') + '>' + opt + '</button>';
       });
       html += '</div>';
       html += '<div class="progress">第 ' + (idx + 1) + ' / ' + words.length + '</div>';
@@ -265,11 +272,11 @@
     current = {
       handle: function (act, target) {
         const w = words[idx];
-        if (act === 'play-sound') { Voice.speak(w.en); }
+        if (act === 'play-sound') { Voice.speak(isZh ? w.zh : w.en, { lang: isZh ? 'zh-CN' : 'en-US' }); }
         else if (act === 'pick') {
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
-          if (lastPick === w.en) correct++;
+          if (lastPick === w[KEY]) correct++;
           draw();
         }
         else if (act === 'next-listen') {
@@ -281,26 +288,28 @@
     buildOptions(); draw();
   }
 
-  /* ----------------------- 玩法4：闯关测验 ----------------------- */
+  /* ----------------------- 玩法4：闯关测验（选中文意思 / 选拼音） ----------------------- */
   function renderQuiz(g, u) {
+    const isZh = currentLang() === 'zh';
+    const KEY = isZh ? 'py' : 'zh';
     const words = u.words;
     let idx = 0, correct = 0, picked = false, lastPick = '', options = [];
     function buildOptions() {
       const target = words[idx];
-      const pool = shuffle(words.filter((w) => w.zh !== target.zh).map((w) => w.zh)).slice(0, 3);
-      options = shuffle([target.zh].concat(pool));
+      const pool = shuffle(words.filter((w) => w[KEY] !== target[KEY]).map((w) => w[KEY])).slice(0, 3);
+      options = shuffle([target[KEY]].concat(pool));
     }
     function draw() {
       const w = words[idx];
       let html = topbar({ title: u.emoji + ' 闯关测验', back: true });
       html += '<div class="stage-wrap quiz">';
-      html += '<div class="quiz-word"><div class="quiz-emoji">' + w.emoji + '</div><div class="quiz-en">' + w.en + '</div></div>';
-      html += '<p class="quiz-q">选出它的中文意思：</p>';
+      html += '<div class="quiz-word"><div class="quiz-emoji">' + w.emoji + '</div><div class="quiz-en' + (isZh ? ' fc-py' : '') + '">' + (isZh ? w.zh : w.en) + '</div></div>';
+      html += '<p class="quiz-q">' + (isZh ? '选出它的拼音：' : '选出它的中文意思：') + '</p>';
       html += '<div class="opt-grid">';
       options.forEach((opt) => {
         let cls = 'opt';
-        if (picked) { if (opt === w.zh) cls += ' correct'; else if (opt === lastPick) cls += ' wrong'; }
-        html += '<button class="' + cls + '" data-act="pick-zh" data-opt="' + opt + '"' + (picked ? ' disabled' : '') + '>' + opt + '</button>';
+        if (picked) { if (opt === w[KEY]) cls += ' correct'; else if (opt === lastPick) cls += ' wrong'; }
+        html += '<button class="' + cls + (isZh ? ' fc-py' : '') + '" data-act="pick-zh" data-opt="' + opt + '"' + (picked ? ' disabled' : '') + '>' + opt + '</button>';
       });
       html += '</div>';
       html += '<div class="progress">第 ' + (idx + 1) + ' / ' + words.length + '</div>';
@@ -317,7 +326,7 @@
         if (act === 'pick-zh') {
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
-          if (lastPick === w.zh) correct++;
+          if (lastPick === w[KEY]) correct++;
           draw();
         }
         else if (act === 'next-quiz') {
@@ -397,6 +406,7 @@
     if (!node) return;
     const act = node.getAttribute('data-act');
     if (act === 'back') { goBack(); return; }
+    if (act === 'open-subject') { state.sj = +node.dataset.sj; goGrade(); return; }
     if (act === 'open-grade') { state.gi = +node.dataset.gi; goGrade(); return; }
     if (act === 'open-unit') { state.ui = +node.dataset.ui; goUnit(); return; }
     if (act === 'open-stage') { state.si = +node.dataset.si; goStage(); return; }

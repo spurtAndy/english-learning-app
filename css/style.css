@@ -107,6 +107,27 @@ body {
 .grade-card.locked { opacity: .5; filter: grayscale(0.6); cursor: not-allowed; }
 .grade-card.soon { background: #f1f3fb; }
 .home-foot { margin-top: 26px; }
+
+/* ---------------- 首页：学科选择 ---------------- */
+.subject-grid {
+  display: flex; gap: 26px; flex-wrap: wrap; justify-content: center;
+  width: 100%; max-width: 760px; margin-top: 10px;
+}
+.subject-card {
+  border: none; background: var(--card); border-radius: var(--radius);
+  padding: 34px 30px; cursor: pointer; box-shadow: var(--shadow);
+  transition: transform .14s, box-shadow .14s;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 260px; min-height: 200px; justify-content: center;
+}
+.subject-card:active { transform: scale(0.96); }
+.subject-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-h); }
+.subject-emoji { font-size: 84px; line-height: 1; }
+.subject-name { font-size: 30px; font-weight: bold; color: var(--ink); }
+.subject-sub { font-size: 16px; color: var(--muted); text-align: center; line-height: 1.4; }
+
+/* ---------------- 拼音大字 ---------------- */
+.fc-py { font-size: 64px; font-weight: 800; color: var(--primary); letter-spacing: 2px; }
 .btn-mini {
   border: none; background: #fff; color: var(--muted);
   font-family: var(--font); font-size: 16px; padding: 10px 18px;
