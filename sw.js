@@ -1,7 +1,7 @@
 // Service Worker：缓存应用外壳，支持平板离线使用 / 安装到桌面
 // 策略：HTML/JS/CSS 网络优先（有网永远拿最新代码），图标等静态资源缓存优先
 // 注意：每次改动代码文件后，必须把 CACHE 版本号 +1，客户端才会换新缓存
-const CACHE = 'english-kids-v3';
+const CACHE = 'english-kids-v4';
 const ASSETS = [
   './',
   './index.html',

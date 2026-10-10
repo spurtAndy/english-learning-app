@@ -42,6 +42,12 @@ const Voice = (function () {
     try {
       refreshVoices();
       window.speechSynthesis.onvoiceschanged = refreshVoices;
+      // 某些浏览器（尤其 Edge/WebView）不触发 onvoiceschanged，主动轮询几秒直到拿到发音人
+      let n = 0;
+      const iv = setInterval(function () {
+        refreshVoices();
+        if (voicesCache.length || ++n > 40) { clearInterval(iv); }
+      }, 200);
     } catch (e) { /* ignore */ }
   }
   warmUpTTS();
@@ -65,19 +71,23 @@ const Voice = (function () {
   let currentUtterance = null;
   let lastTtsError = '';
 
-  // 朗读文本（含 取消竞态 / 垃圾回收 / 无声重试 三重保护）
+  // 朗读文本（四重保护：GC引用 / 空闲等待 / 超时兜底 / 无声重试）
+  // Edge 实测两个坑：① 未被引用的 Utterance 会被垃圾回收 → 无声且回调全丢；
+  //                  ② 引擎忙时（voices 未就绪/上一条未清完）直接 speak 会楔死。
   function speak(text, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
       if (!ttsReady) { lastTtsError = 'no-speech-synthesis'; resolve(false); return; }
       const synth = window.speechSynthesis;
-      let settled = false, started = false;
-      function done(ok) { if (!settled) { settled = true; resolve(ok); } }
-      try {
-        synth.cancel();
-        try { synth.resume(); } catch (e) {}
-        // cancel 与 speak 同帧调用在部分浏览器会吞掉发音，延后一拍再开口
-        setTimeout(function () {
+      let settled = false, started = false, watchdog = null;
+      function done(ok) {
+        if (settled) return;
+        settled = true;
+        if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+        resolve(ok);
+      }
+      function begin() {
+        try {
           const u = new SpeechSynthesisUtterance(text);
           u.lang = opts.lang || 'en-US';
           const v = pickVoice(u.lang);
@@ -85,15 +95,25 @@ const Voice = (function () {
           u.rate = opts.rate != null ? opts.rate : 0.85;
           u.pitch = opts.pitch != null ? opts.pitch : 1.15;
           u.volume = opts.volume != null ? opts.volume : 1;
-          currentUtterance = u;
+          currentUtterance = u; // 防 GC：必须全程持引用，否则 Edge 会静默杀掉发音
           u.onstart = function () { started = true; };
           u.onend = function () { done(true); };
           u.onerror = function (e) { lastTtsError = (e && e.error) || 'tts-error'; done(false); };
           try { synth.speak(u); } catch (e) { lastTtsError = 'speak-throw'; done(false); }
-          // 兜底：1.2s 后还没开口且引擎空闲，改用默认发音人再试一次
+          // 超时兜底：个别引擎（Edge 楔死态）onend 永远不来，到时强制收尾，绝不让流程挂起
+          const maxMs = 4000 + String(text).length * 180;
+          watchdog = setTimeout(function () {
+            if (settled) return;
+            lastTtsError = started ? '' : 'tts-timeout';
+            try { synth.cancel(); } catch (e) {}
+            try { synth.resume(); } catch (e) {}
+            done(started); // 开口了就算成功（有的引擎不触发 onend 但声音正常）
+          }, maxMs);
+          // 无声重试：1.6s 还没开口，cancel 后用默认发音人再试一次
           setTimeout(function () {
-            if (!started && !settled && !synth.speaking) {
+            if (!started && !settled) {
               try {
+                synth.cancel();
                 const u2 = new SpeechSynthesisUtterance(text);
                 u2.lang = opts.lang || 'en-US';
                 u2.rate = opts.rate != null ? opts.rate : 0.85;
@@ -101,9 +121,23 @@ const Voice = (function () {
                 u2.onend = function () { done(true); };
                 u2.onerror = function (e) { lastTtsError = (e && e.error) || 'tts-error'; done(false); };
                 synth.speak(u2);
-              } catch (e) { lastTtsError = 'speak-throw'; done(false); }
+              } catch (e) { lastTtsError = 'speak-throw'; }
             }
-          }, 1200);
+          }, 1600);
+        } catch (e) { lastTtsError = 'speak-throw'; done(false); }
+      }
+      try {
+        synth.cancel();
+        try { synth.resume(); } catch (e) {}
+        // 等引擎真正空闲再开口（Edge 上一条没清完就 speak 会楔死）
+        let waited = 0;
+        const iv = setInterval(function () {
+          waited += 60;
+          const idle = !synth.speaking && !synth.pending;
+          if (idle || settled || waited >= 900) {
+            clearInterval(iv);
+            if (!settled) setTimeout(begin, 80);
+          }
         }, 60);
       } catch (e) { lastTtsError = 'speak-throw'; done(false); }
     });
