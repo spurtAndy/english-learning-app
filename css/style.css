@@ -129,6 +129,18 @@ body {
 .pm-name { flex: 1; font-size: 18px; font-weight: bold; }
 .btn-mini.danger { color: var(--red); }
 
+/* ---------------- 声音测试 ---------------- */
+.soundtest .stage-card { cursor: pointer; text-align: left; }
+.stage-stars.ok { color: var(--green); }
+.stage-stars.no { color: var(--red); }
+.soundtest-info {
+  width: 100%; max-width: 640px; margin-top: 22px;
+  background: #fff; border-radius: 18px; box-shadow: var(--shadow);
+  padding: 16px 20px;
+}
+.soundtest-info .hint-small { margin: 4px 0; }
+.soundtest-advice { margin-top: 10px; border-top: 1px dashed #e6e9f5; padding-top: 10px; }
+
 /* ---------------- 首页：学科选择 ---------------- */
 .subject-grid {
   display: flex; gap: 26px; flex-wrap: wrap; justify-content: center;

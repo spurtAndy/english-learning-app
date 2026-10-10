@@ -63,12 +63,13 @@ const Voice = (function () {
 
   // 持有当前 utterance 引用：部分浏览器会把它回收，导致读到一半没声（Chrome 已知问题）
   let currentUtterance = null;
+  let lastTtsError = '';
 
   // 朗读文本（含 取消竞态 / 垃圾回收 / 无声重试 三重保护）
   function speak(text, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
-      if (!ttsReady) { resolve(false); return; }
+      if (!ttsReady) { lastTtsError = 'no-speech-synthesis'; resolve(false); return; }
       const synth = window.speechSynthesis;
       let settled = false, started = false;
       function done(ok) { if (!settled) { settled = true; resolve(ok); } }
@@ -87,8 +88,8 @@ const Voice = (function () {
           currentUtterance = u;
           u.onstart = function () { started = true; };
           u.onend = function () { done(true); };
-          u.onerror = function () { done(false); };
-          try { synth.speak(u); } catch (e) { done(false); }
+          u.onerror = function (e) { lastTtsError = (e && e.error) || 'tts-error'; done(false); };
+          try { synth.speak(u); } catch (e) { lastTtsError = 'speak-throw'; done(false); }
           // 兜底：1.2s 后还没开口且引擎空闲，改用默认发音人再试一次
           setTimeout(function () {
             if (!started && !settled && !synth.speaking) {
@@ -98,14 +99,71 @@ const Voice = (function () {
                 u2.rate = opts.rate != null ? opts.rate : 0.85;
                 currentUtterance = u2;
                 u2.onend = function () { done(true); };
-                u2.onerror = function () { done(false); };
+                u2.onerror = function (e) { lastTtsError = (e && e.error) || 'tts-error'; done(false); };
                 synth.speak(u2);
-              } catch (e) { done(false); }
+              } catch (e) { lastTtsError = 'speak-throw'; done(false); }
             }
           }, 1200);
         }, 60);
-      } catch (e) { done(false); }
+      } catch (e) { lastTtsError = 'speak-throw'; done(false); }
     });
+  }
+
+  /* ---------------- WebAudio 提示音：不依赖 TTS 引擎，任何手机都出声 ---------------- */
+  let audioCtx = null;
+  function ensureCtx() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) { try { audioCtx.resume(); } catch (e) {} }
+      return audioCtx;
+    } catch (e) { return null; }
+  }
+  function tone(ctx, freq, t0, dur, type, gainV) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gainV || 0.25, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+  // kind: 'click' | 'correct' | 'wrong' | 'win'
+  function beep(kind) {
+    const ctx = ensureCtx();
+    if (!ctx) return Promise.resolve(false);
+    const now = ctx.currentTime + 0.02;
+    if (kind === 'wrong') {
+      tone(ctx, 220, now, 0.22, 'square', 0.12);
+      tone(ctx, 175, now + 0.12, 0.26, 'square', 0.10);
+    } else if (kind === 'correct') {
+      tone(ctx, 660, now, 0.12);
+      tone(ctx, 880, now + 0.1, 0.18);
+    } else if (kind === 'win') {
+      [523, 659, 784, 1046].forEach((f, i) => tone(ctx, f, now + i * 0.12, 0.22));
+    } else {
+      tone(ctx, 880, now, 0.15);
+    }
+    return Promise.resolve(true);
+  }
+
+  /* ---------------- 声音诊断（供「声音测试」页显示） ---------------- */
+  function diagnose() {
+    refreshVoices();
+    const hasZh = voicesCache.some((v) => (v.lang || '').toLowerCase().indexOf('zh') === 0);
+    const hasEn = voicesCache.some((v) => (v.lang || '').toLowerCase().indexOf('en') === 0);
+    return {
+      ttsSupported: ttsReady,
+      audioApi: !!(window.AudioContext || window.webkitAudioContext),
+      voiceCount: voicesCache.length,
+      hasZhVoice: hasZh,
+      hasEnVoice: hasEn,
+      voices: voicesCache.slice(0, 10).map((v) => v.name + ' (' + v.lang + (v.localService ? '·本地' : '·网络') + ')')
+    };
   }
 
   // 浏览器原生识别
@@ -217,6 +275,8 @@ const Voice = (function () {
 
   return {
     speak: speak,
+    beep: beep,
+    diagnose: diagnose,
     recognize: recognize,
     recognizeBrowser: recognizeBrowser,
     recognizeProxy: recognizeProxy,
@@ -225,7 +285,8 @@ const Voice = (function () {
     hasRecognition: hasRecognition,
     ttsReady: ttsReady,
     setProvider: setProvider,
-    config: config
+    config: config,
+    get lastTtsError() { return lastTtsError; }
   };
 })();
 

@@ -98,6 +98,7 @@
     html += '<div class="home-tools">';
     html += '<button class="tool-card" data-act="open-review"><div class="tool-emoji">🔁</div><div class="tool-name">错词复习</div><div class="tool-sub">复习 ' + Store.wrongCount() + ' 个错词</div></button>';
     html += '<button class="tool-card" data-act="open-dashboard"><div class="tool-emoji">📊</div><div class="tool-name">家长看板</div><div class="tool-sub">查看学习进度</div></button>';
+    html += '<button class="tool-card" data-act="open-soundtest"><div class="tool-emoji">🔊</div><div class="tool-name">声音测试</div><div class="tool-sub">没声音？点这里诊断</div></button>';
     html += '</div>';
     html += '<div class="home-foot"><button class="btn-mini" data-act="reset">🔄 重置进度</button></div>';
     if (!Voice.hasRecognition && Voice.config.provider !== 'proxy') {
@@ -330,8 +331,8 @@
         else if (act === 'pick') {
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
-          if (lastPick === w[KEY]) correct++;
-          else recordWrongWord(g, u, w);
+          if (lastPick === w[KEY]) { correct++; Voice.beep('correct'); }
+          else { recordWrongWord(g, u, w); Voice.beep('wrong'); }
           draw();
         }
         else if (act === 'next-listen') {
@@ -381,8 +382,8 @@
         if (act === 'pick-zh') {
           if (picked) return;
           picked = true; lastPick = target.getAttribute('data-opt');
-          if (lastPick === w[KEY]) correct++;
-          else recordWrongWord(g, u, w);
+          if (lastPick === w[KEY]) { correct++; Voice.beep('correct'); }
+          else { recordWrongWord(g, u, w); Voice.beep('wrong'); }
           draw();
         }
         else if (act === 'next-quiz') {
@@ -453,15 +454,48 @@
     app.innerHTML = html;
   }
 
+  /* ----------------------- 声音测试 / 诊断 ----------------------- */
+  function soundAdvice(d) {
+    const tips = [];
+    if (!d.ttsSupported) tips.push('此浏览器不支持语音合成（TTS），请改用 Chrome / Edge。');
+    if (!d.audioApi) tips.push('此浏览器不支持 WebAudio，提示音不可用。');
+    if (d.voiceCount === 0) tips.push('手机上没有任何发音人：请到系统设置搜索「文字转语音 / TTS」，选择并安装一个语音引擎（安卓可在应用商店装「Google 文字转语音」或用系统自带引擎）。');
+    if (d.voiceCount > 0 && !d.hasEnVoice) tips.push('当前发音人里没有英语语音包：英语朗读可能无声，请在 TTS 引擎里下载英文语音数据，或换用带英文的引擎。');
+    if (d.voiceCount > 0 && !d.hasZhVoice) tips.push('当前发音人里没有中文语音包：中文/拼音朗读可能无声，请在 TTS 引擎里下载中文语音数据。');
+    tips.push('若第 1 步（提示音）都没声：是音量/静音问题——调大「媒体音量」（不是铃声音量）；iPhone 请关闭侧边静音拨片。');
+    tips.push('若第 1 步有声、2/3 无声：是系统语音引擎缺对应语言，按上面提示安装语音包。');
+    return tips.map((t) => '<p class="hint-small">· ' + escapeHtml(t) + '</p>').join('');
+  }
+  function renderSoundTest() {
+    const d = Voice.diagnose();
+    let html = topbar({ title: '🔊 声音测试', back: true });
+    html += '<div class="section soundtest">';
+    html += '<p class="subtitle">从上到下依次点：哪一步没声音，问题就出在那一步</p>';
+    html += '<button class="stage-card" data-act="test-beep"><div class="stage-icon">🔔</div><div class="stage-title">第 1 步 · 提示音（不依赖语音引擎）</div><div class="stage-stars" id="st-beep"></div></button>';
+    html += '<button class="stage-card" data-act="test-zh"><div class="stage-icon">🀄</div><div class="stage-title">第 2 步 · 中文朗读「你好」</div><div class="stage-stars" id="st-zh"></div></button>';
+    html += '<button class="stage-card" data-act="test-en"><div class="stage-icon">🅰️</div><div class="stage-title">第 3 步 · 英文朗读「one two three」</div><div class="stage-stars" id="st-en"></div></button>';
+    html += '<div class="soundtest-info">';
+    html += '<p class="hint-small">引擎状态：TTS ' + (d.ttsSupported ? '✅ 支持' : '❌ 不支持') + ' · 音频通道 ' + (d.audioApi ? '✅' : '❌') + ' · 发音人 ' + d.voiceCount + ' 个</p>';
+    if (d.voices.length) html += '<p class="hint-small">' + d.voices.map(escapeHtml).join('；') + '</p>';
+    html += '<div class="soundtest-advice">' + soundAdvice(d) + '</div>';
+    html += '</div></div>';
+    app.innerHTML = html;
+  }
+  function setTestResult(id, msg, ok) {
+    const n = el(id);
+    if (n) { n.textContent = msg; n.className = 'stage-stars ' + (ok ? 'ok' : 'no'); }
+  }
+
   /* ----------------------- 通关 / 星级 / 重试 ----------------------- */
   function computeStars(ratio) { return ratio >= 0.9 ? 3 : ratio >= 0.7 ? 2 : ratio >= 0.5 ? 1 : 0; }
   function completeStage(g, u, si, stars) {
     Store.setStage(g.id, u.id, si, stars);
+    Voice.beep('win');
     showCelebrate(stars);
   }
   function finishStage(g, u, si, ratio) {
     const stars = computeStars(ratio);
-    if (stars <= 0) showRetry();
+    if (stars <= 0) { Voice.beep('wrong'); showRetry(); }
     else completeStage(g, u, si, stars);
   }
 
@@ -512,12 +546,13 @@
   function goStage() { state.view = 'stage'; current = null; renderStage(); }
   function goReview() { state.view = 'review'; reviewIdx = 0; renderReview(); }
   function goDashboard() { state.view = 'dashboard'; renderDashboard(); }
+  function goSoundTest() { state.view = 'soundtest'; renderSoundTest(); }
   function goBack() {
     if (state.view === 'stage') goUnit();
     else if (state.view === 'unit') goUnits();
     else if (state.view === 'units') goGrades();
     else if (state.view === 'grades') goHome();
-    else if (state.view === 'review' || state.view === 'dashboard') goHome();
+    else if (state.view === 'review' || state.view === 'dashboard' || state.view === 'soundtest') goHome();
   }
 
   /* ----------------------- 事件委托 ----------------------- */
@@ -530,6 +565,21 @@
     if (act === 'open-grade') { state.gi = +node.dataset.gi; goUnits(); return; }
     if (act === 'open-unit') { state.ui = +node.dataset.ui; goUnit(); return; }
     if (act === 'open-stage') { state.si = +node.dataset.si; goStage(); return; }
+    if (act === 'open-soundtest') { goSoundTest(); return; }
+    if (act === 'test-beep') {
+      Voice.beep('click');
+      setTestResult('st-beep', '🔔 已播放（没听到=音量/静音问题）', true);
+      return;
+    }
+    if (act === 'test-zh' || act === 'test-en') {
+      const id = act === 'test-zh' ? 'st-zh' : 'st-en';
+      setTestResult(id, '⏳ 正在朗读…', true);
+      Voice.speak(act === 'test-zh' ? '你好，你好' : 'one, two, three', { lang: act === 'test-zh' ? 'zh-CN' : 'en-US' })
+        .then(function (ok) {
+          setTestResult(id, ok ? '✅ 朗读完成' : '❌ 失败：' + (Voice.lastTtsError || '未知原因（看下方建议）'), ok);
+        });
+      return;
+    }
     if (act === 'open-review') { goReview(); return; }
     if (act === 'open-dashboard') { goDashboard(); return; }
     if (act === 'switch-profile') { Store.switchProfile(node.dataset.id); renderHome(); return; }
